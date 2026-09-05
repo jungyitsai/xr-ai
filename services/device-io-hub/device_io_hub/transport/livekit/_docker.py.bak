@@ -94,30 +94,6 @@ class LiveKitDocker:
         self._log_task: asyncio.Task | None = None
 
     async def start(self) -> None:
-        # Reuse an externally managed LiveKit server when lk_internal_url
-        # points to a reachable host.
-        from urllib.parse import urlparse
-
-        parsed = urlparse(self._cfg.lk_internal_url)
-        host = parsed.hostname or "127.0.0.1"
-        port = parsed.port or self._cfg.lk_port_ws
-
-        try:
-            _, writer = await asyncio.open_connection(host, port)
-            writer.close()
-            await writer.wait_closed()
-            logger.info(
-                "Existing LiveKit server detected at {}:{} — reusing it",
-                host,
-                port,
-            )
-            return
-        except OSError as exc:
-            if host not in ("127.0.0.1", "localhost"):
-                raise StartupError(
-                    f"External LiveKit server is not reachable at {host}:{port}: {exc}"
-                ) from exc
-
         self._tmpdir = tempfile.TemporaryDirectory(prefix="xr_livekit_")
         cfg_path = Path(self._tmpdir.name) / "livekit.yaml"
         _write_livekit_config(cfg_path, self._cfg)

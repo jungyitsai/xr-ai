@@ -40,18 +40,8 @@ _DEVELOPMENT_CERTIFICATE_CHECK_INTERVAL_S = 24 * 60 * 60
 
 
 def _build_app(cfg: LiveKitConnectorConfig, cert_bytes: bytes | None) -> FastAPI:
-    # Proxy browser signaling to the configured LiveKit server.
-    # Example: ws://104.214.170.2:7880
-    lk_internal_ws = cfg.lk_internal_url
-
-    if lk_internal_ws.startswith("wss://"):
-        lk_internal_http = "https://" + lk_internal_ws[len("wss://"):]
-    elif lk_internal_ws.startswith("ws://"):
-        lk_internal_http = "http://" + lk_internal_ws[len("ws://"):]
-    else:
-        raise ValueError(
-            f"Unsupported lk_internal_url: {lk_internal_ws!r}"
-        )
+    lk_internal_http = f"http://127.0.0.1:{cfg.lk_port_ws}"
+    lk_internal_ws   = f"ws://127.0.0.1:{cfg.lk_port_ws}"
 
     # Shared so /rtc/validate hits don't pay TCP+TLS startup per request.
     proxy_client = httpx.AsyncClient(timeout=5.0)
@@ -84,20 +74,11 @@ def _build_app(cfg: LiveKitConnectorConfig, cert_bytes: bytes | None) -> FastAPI
     async def get_token(request: Request, identity: str = Query(default="web-user")) -> dict:
         # Use the request's Host header so the URL works for both localhost
         # and remote clients without per-deployment config.
-        host = request.headers.get("host", "localhost")
-
-        # DeviceIOHub may sit behind an HTTPS reverse proxy (e.g. GPUtw).
-        # Return a same-origin WebSocket URL so /rtc is proxied by this server.
-        forwarded_proto = (
-            request.headers.get("x-forwarded-proto", "")
-            .split(",")[0]
-            .strip()
-            .lower()
-        )
-
-        is_https = cfg.web_server_tls or forwarded_proto == "https"
-        ws_scheme = "wss" if is_https else "ws"
-        lk_url = f"{ws_scheme}://{host}"
+        host = request.headers.get("host", "localhost").split(":")[0]
+        if cfg.web_server_tls:
+            lk_url = f"wss://{host}:{cfg.web_server_port}"
+        else:
+            lk_url = f"ws://{host}:{cfg.lk_port_ws}"
         token = make_client_token(cfg, identity=identity, ttl=None)
         return {"token": token, "room": cfg.room_name, "url": lk_url}
 
