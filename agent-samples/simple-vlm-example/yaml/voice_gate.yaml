@@ -12,6 +12,7 @@
 magic_phrases:
   - "agent"
   - "hey agent"
+  - "Okay"
 
 # Audible "I heard you" feedback. When true (and magic_phrases is
 # non-empty), a short two-tone chime plays the moment a phrase matches —
