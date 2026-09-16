@@ -1,19 +1,43 @@
 {
   "models": {
     "stt": {
-      "adapter": {"preset": "parakeet_stt"},
-      "endpoint": {"base_url": "http://localhost:8103", "readiness": "health"},
-      "deployment": {"ownership": "reused", "service": "stt"}
+      "adapter": {
+        "kind": "riva_streaming_grpc",
+        "category": "stt",
+        "language": "en-US"
+      },
+      "endpoint": {
+        "base_url": "localhost:50052"
+      },
+      "deployment": {
+        "ownership": "external"
+      }
     },
     "vlm": {
-      "adapter": {"preset": "cosmos3_nano_reasoner"},
-      "endpoint": {"base_url": "http://localhost:8100", "readiness": "health"},
-      "deployment": {"ownership": "reused", "service": "vlm"}
+      "adapter": {
+        "preset": "cosmos3_nano_reasoner"
+      },
+      "endpoint": {
+        "base_url": "http://localhost:8100",
+        "readiness": "health"
+      },
+      "deployment": {
+        "ownership": "reused",
+        "service": "vlm"
+      }
     },
     "tts": {
-      "adapter": {"preset": "piper_tts"},
-      "endpoint": {"base_url": "http://localhost:8105", "readiness": "health"},
-      "deployment": {"ownership": "reused", "service": "tts"}
+      "adapter": {
+        "preset": "piper_tts"
+      },
+      "endpoint": {
+        "base_url": "http://localhost:8105",
+        "readiness": "health"
+      },
+      "deployment": {
+        "ownership": "reused",
+        "service": "tts"
+      }
     }
   }
 }

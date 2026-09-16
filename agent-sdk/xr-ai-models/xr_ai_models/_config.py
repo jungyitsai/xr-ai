@@ -18,7 +18,7 @@ from ._utils import merge_dicts
 Category = Literal["llm", "vlm", "stt", "tts", "embedding"]
 """A model role supported by :class:`ModelsConfig`."""
 
-ModelKind = Literal["openai_compat", "riva_grpc"]
+ModelKind = Literal["openai_compat", "riva_grpc", "riva_streaming_grpc"]
 """A supported model-service adapter implementation."""
 
 Readiness = Literal["health", "none"]
@@ -28,6 +28,8 @@ KIND_OPENAI_COMPAT: ModelKind = "openai_compat"
 """The adapter kind for OpenAI-compatible HTTP endpoints."""
 KIND_RIVA_GRPC: ModelKind = "riva_grpc"
 """The adapter kind for Riva gRPC speech clients (the ``riva`` extra)."""
+KIND_RIVA_STREAMING_GRPC: ModelKind = "riva_streaming_grpc"
+"""The adapter kind for streaming Riva gRPC STT clients."""
 
 
 @dataclass(frozen=True)
@@ -717,7 +719,17 @@ def _construct(category: Category, body: dict[str, Any]) -> Spec:
     kind = body.get("kind", KIND_OPENAI_COMPAT)
     if kind == KIND_RIVA_GRPC and category not in ("stt", "tts"):
         raise ValueError("riva_grpc is a speech kind; use it for stt/tts only")
-    if kind not in (KIND_OPENAI_COMPAT, KIND_RIVA_GRPC):
+
+    if kind == KIND_RIVA_STREAMING_GRPC and category != "stt":
+        raise ValueError(
+            "riva_streaming_grpc is an STT-only kind"
+        )
+
+    if kind not in (
+        KIND_OPENAI_COMPAT,
+        KIND_RIVA_GRPC,
+        KIND_RIVA_STREAMING_GRPC,
+    ):
         raise ValueError(f"unsupported adapter kind: {kind!r}")
 
     endpoint = EndpointSpec(

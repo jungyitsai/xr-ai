@@ -4,7 +4,12 @@
 """``make_*`` constructors that dispatch a :class:`Spec` to a concrete client."""
 from __future__ import annotations
 
-from ._config import KIND_OPENAI_COMPAT, KIND_RIVA_GRPC, ModelsConfig
+from ._config import (
+    KIND_OPENAI_COMPAT,
+    KIND_RIVA_GRPC,
+    KIND_RIVA_STREAMING_GRPC,
+    ModelsConfig,
+)
 from ._openai_compat import (
     OpenAICompatEmbedding,
     OpenAICompatLLM,
@@ -110,6 +115,18 @@ def make_stt(config: ModelsConfig, name: str) -> STTService:
         # Deferred: RivaSTT needs the optional nvidia-riva-client (riva extra).
         from ._riva_grpc import RivaSTT
         return RivaSTT(
+            base_url=endpoint.base_url,
+            api_key_env=endpoint.api_key_env,
+            function_id=adapter.function_id,
+            use_ssl=adapter.use_ssl,
+            language=adapter.language,
+            timeout=endpoint.timeout,
+            health_check=endpoint.health_check,
+        )
+    if adapter.kind == KIND_RIVA_STREAMING_GRPC:
+        # Deferred: streaming Riva STT also needs nvidia-riva-client.
+        from ._riva_streaming_grpc import RivaStreamingSTT
+        return RivaStreamingSTT(
             base_url=endpoint.base_url,
             api_key_env=endpoint.api_key_env,
             function_id=adapter.function_id,
