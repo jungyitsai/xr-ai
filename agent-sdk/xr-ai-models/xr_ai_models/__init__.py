@@ -24,6 +24,12 @@ from ._protocols import (
     VideoInput,
     VideoPart,
     VLMService,
+    OCRCapabilities,
+    OCRDetection,
+    OCRMergeLevel,
+    OCRPoint,
+    OCRResponse,
+    OCRService,
 )
 from ._openai_compat import (
     OpenAICompatLLM,
@@ -48,9 +54,12 @@ from ._config import (
     VLMSpec,
     load_models_config,
     load_models_config_from_dict,
+    KIND_NVIDIA_OCR,
+    OCRSpec,
 )
-from ._factory import make_embedding, make_llm, make_stt, make_tts, make_vlm
+from ._factory import make_embedding, make_llm, make_stt, make_tts, make_vlm, make_ocr
 from ._riva_grpc import RivaSTT, RivaTTS
+from ._ocr import NvidiaOCR, VLMOCR
 
 __all__ = [
     "Capabilities",
@@ -96,4 +105,15 @@ __all__ = [
     "make_stt",
     "make_tts",
     "make_vlm",
+    "OCRCapabilities",
+    "OCRDetection",
+    "OCRMergeLevel",
+    "OCRPoint",
+    "OCRResponse",
+    "OCRService",
+    "NvidiaOCR",
+    "VLMOCR",
+    "KIND_NVIDIA_OCR",
+    "OCRSpec",
+    "make_ocr",
 ]

@@ -22,6 +22,7 @@ from .nemotron_omni   import NEMOTRON_OMNI
 from .nemotron_embedding import NEMOTRON_EMBEDDING
 from .parakeet_stt    import PARAKEET_STT
 from .piper_tts       import PIPER_TTS
+from .nemotron_ocr_v2 import NEMOTRON_OCR_V2
 
 
 _PRESETS: dict[str, dict[str, Any]] = {
@@ -34,6 +35,7 @@ _PRESETS: dict[str, dict[str, Any]] = {
     "nemotron_embedding": NEMOTRON_EMBEDDING,
     "parakeet_stt":   PARAKEET_STT,
     "piper_tts":      PIPER_TTS,
+    "nemotron_ocr_v2": NEMOTRON_OCR_V2,
 }
 
 

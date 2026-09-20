@@ -15,10 +15,10 @@ from . import presets as _presets
 from ._utils import merge_dicts
 
 
-Category = Literal["llm", "vlm", "stt", "tts", "embedding"]
+Category = Literal["llm", "vlm", "ocr", "stt", "tts", "embedding"]
 """A model role supported by :class:`ModelsConfig`."""
 
-ModelKind = Literal["openai_compat", "riva_grpc", "riva_streaming_grpc"]
+ModelKind = Literal["openai_compat", "riva_grpc", "riva_streaming_grpc", "nvidia_ocr"]
 """A supported model-service adapter implementation."""
 
 Readiness = Literal["health", "none"]
@@ -30,7 +30,8 @@ KIND_RIVA_GRPC: ModelKind = "riva_grpc"
 """The adapter kind for Riva gRPC speech clients (the ``riva`` extra)."""
 KIND_RIVA_STREAMING_GRPC: ModelKind = "riva_streaming_grpc"
 """The adapter kind for streaming Riva gRPC STT clients."""
-
+KIND_NVIDIA_OCR: ModelKind = "nvidia_ocr"
+"""The adapter kind for NVIDIA Image OCR NIM HTTP endpoints."""
 
 @dataclass(frozen=True)
 class AdapterSpec:
@@ -55,6 +56,12 @@ class AdapterSpec:
 
     default_extras: dict[str, Any] = field(default_factory=dict)
     """Model-specific fields merged into every request payload."""
+
+    request_path: str | None = None
+    """OCR request route, or ``None`` when ``base_url`` is the full route."""
+
+    prompt: str = ""
+    """OCR transcription prompt used by an OpenAI-compatible VLM fallback."""
 
     function_id: str | None = None
     """NVCF function id for hosted Riva speech endpoints."""
@@ -533,10 +540,32 @@ class EmbeddingSpec(_RoleSpec):
         )
 
 
-Spec = LLMSpec | VLMSpec | STTSpec | TTSSpec | EmbeddingSpec
+@dataclass(frozen=True)
+class OCRSpec(_RoleSpec):
+    """Configuration for an optical character recognition model role."""
+
+    adapter: AdapterSpec = field(default_factory=AdapterSpec)
+    """Model-specific request and response behavior."""
+
+    endpoint: EndpointSpec = field(default_factory=EndpointSpec)
+    """Endpoint connectivity, authentication, and readiness settings."""
+
+    deployment: DeploymentSpec = field(default_factory=DeploymentSpec)
+    """Launcher ownership metadata for the serving process."""
+
+
+Spec = LLMSpec | VLMSpec | OCRSpec | STTSpec | TTSSpec | EmbeddingSpec
 """Any typed model-role specification stored in :class:`ModelsConfig`."""
 
-T = TypeVar("T", LLMSpec, VLMSpec, STTSpec, TTSSpec, EmbeddingSpec)
+T = TypeVar(
+    "T",
+    LLMSpec,
+    VLMSpec,
+    OCRSpec,
+    STTSpec,
+    TTSSpec,
+    EmbeddingSpec,
+)
 
 
 @dataclass(frozen=True)
@@ -555,6 +584,11 @@ class ModelsConfig:
         """Return the VLM specification named *name*."""
 
         return _typed(self.entries, name, VLMSpec)
+    
+    def ocr(self, name: str) -> OCRSpec:
+        """Return the optical character recognition specification named *name*."""
+
+        return _typed(self.entries, name, OCRSpec)
 
     def stt(self, name: str) -> STTSpec:
         """Return the speech-to-text specification named *name*."""
@@ -692,7 +726,7 @@ def _build_spec(body: dict[str, Any]) -> Spec:
             f"entry gave {explicit_category!r}"
         )
     category = preset_category or explicit_category
-    if category not in {"llm", "vlm", "stt", "tts", "embedding"}:
+    if category not in {"llm", "vlm", "ocr", "stt", "tts", "embedding"}:
         raise ValueError(
             f"missing or unknown category {category!r}; "
             "set category when not using a preset"
@@ -729,8 +763,15 @@ def _construct(category: Category, body: dict[str, Any]) -> Spec:
         KIND_OPENAI_COMPAT,
         KIND_RIVA_GRPC,
         KIND_RIVA_STREAMING_GRPC,
+        KIND_NVIDIA_OCR,
     ):
         raise ValueError(f"unsupported adapter kind: {kind!r}")
+    
+    if kind == KIND_NVIDIA_OCR and category != "ocr":
+        raise ValueError("nvidia_ocr adapter kind requires category 'ocr'")
+
+    if kind != KIND_NVIDIA_OCR and "request_path" in body:
+        raise ValueError("request_path requires the nvidia_ocr adapter kind")
 
     endpoint = EndpointSpec(
         base_url=_require_str(body, "base_url"),
@@ -739,21 +780,33 @@ def _construct(category: Category, body: dict[str, Any]) -> Spec:
         readiness=_readiness(body),
         health_path=_health_path(body),
     )
+
+    # OCR 專用 request path
+    request_path = _optional_str(body, "request_path")
+
+    # 如果使用 nvidia_ocr，但設定檔沒有明確指定 request_path，
+    # 預設使用 Nemotron OCR NIM 的 /v1/ocr
+    if "request_path" not in body and kind == KIND_NVIDIA_OCR:
+        request_path = "/v1/ocr"
+
     adapter = AdapterSpec(
         kind=kind,
         model_name=(
             _require_str(body, "model_name")
-            if category in ("llm", "vlm", "embedding")
+            if category in ("llm", "vlm", "ocr", "embedding")
             else ""
         ),
         reasoning_field=_optional_str(body, "reasoning_field"),
         capabilities=_mapping(body, "capabilities"),
         default_extras=_mapping(body, "default_extras"),
+
+        # 新增 OCR 相關設定
+        request_path=request_path,
+        prompt=_optional_str(body, "prompt") or "",
+
         function_id=_optional_str(body, "function_id"),
         use_ssl=_riva_bool(body, "use_ssl", False),
         language=_riva_str(body, "language", "en-US", allow_empty=False),
-        voice=_riva_str(body, "voice", "", allow_empty=True),
-        sample_rate=_riva_sample_rate(body),
     )
     deployment = _deployment(body.get("deployment", {}))
 
@@ -761,6 +814,8 @@ def _construct(category: Category, body: dict[str, Any]) -> Spec:
         return LLMSpec(adapter=adapter, endpoint=endpoint, deployment=deployment)
     if category == "vlm":
         return VLMSpec(adapter=adapter, endpoint=endpoint, deployment=deployment)
+    if category == "ocr":
+        return OCRSpec(adapter=adapter, endpoint=endpoint, deployment=deployment)
     if category == "stt":
         return STTSpec(adapter=adapter, endpoint=endpoint, deployment=deployment)
     if category == "tts":
@@ -771,7 +826,7 @@ def _construct(category: Category, body: dict[str, Any]) -> Spec:
             endpoint=endpoint,
             deployment=deployment,
         )
-    raise AssertionError(category)
+    raise AssertionError(f"unsupported category: {category!r}")
 
 
 def _readiness(body: dict[str, Any]) -> Readiness:
