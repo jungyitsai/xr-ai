@@ -24,6 +24,17 @@ from xr_ai_tools.vision import StreamingImageQueryTool
 from xr_ai_voice import HubVoiceTransport, VadConfig, VoiceAgent
 from xr_ai_voicegate import load_voice_gate_config
 
+import msgpack
+from xr_ai_hub import DataMessage
+
+import base64
+import httpx
+
+_OCR_IMAGE_TOPIC = "medical.ocr.image"
+_OCR_API_URL = "http://127.0.0.1:8102/v1/ocr"
+
+_ocr_pending: dict[str, dict[int, list[dict]]] = {}
+
 from .agent import (
     INTERRUPTED_TOPIC,
     PARTICIPANT_LEFT_TOPIC,
@@ -36,6 +47,147 @@ _VLM_WARMUP_SIZE = (1280, 720)
 _VLM_WARMUP_MAX_TOKENS = 4
 _VLM_WARMUP_TIMEOUT_S = 120.0
 
+
+_OCR_IMAGE_TOPIC = "medical.ocr.image"
+
+async def _run_nemotron_ocr(
+    image_bytes: bytes,
+    mime_type: str,
+) -> dict:
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+
+    payload = {
+        "input": [
+            {
+                "type": "image_url",
+                "url": f"data:{mime_type};base64,{encoded}",
+            }
+        ],
+        "merge_levels": ["word"],
+    }
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(
+            _OCR_API_URL,
+            json=payload,
+        )
+        response.raise_for_status()
+        return response.json()
+
+async def _on_ocr_image(msg: DataMessage) -> None:
+    if msg.topic != _OCR_IMAGE_TOPIC:
+        return
+
+    try:
+        payload = msgpack.unpackb(
+            msg.data,
+            raw=False,
+        )
+
+        request_id = payload.get("request_id", "")
+        image_index = int(payload.get("image_index", 0))
+        image_count = int(payload.get("image_count", 0))
+        mime_type = payload.get("mime_type", "")
+        image_bytes = payload.get("image", b"")
+
+        logger.info(
+            "OCR image received: participant={!r} "
+            "request_id={!r} image_index={}/{} "
+            "mime_type={!r} size={} bytes",
+            msg.participant_id,
+            request_id,
+            image_index,
+            image_count,
+            mime_type,
+            len(image_bytes),
+        )
+
+        result = await _run_nemotron_ocr(
+            image_bytes=image_bytes,
+            mime_type=mime_type,
+        )
+
+        logger.info(
+            "Nemotron OCR completed: participant={!r} "
+            "request_id={!r} image_index={}/{}",
+            msg.participant_id,
+            request_id,
+            image_index,
+            image_count,
+        )
+
+        detections: list[dict] = []
+
+        for item in result.get("data", []):
+            for detection in item.get("text_detections", []):
+                prediction = detection.get(
+                    "text_prediction",
+                    {},
+                )
+
+                text = prediction.get("text", "")
+                confidence = float(
+                    prediction.get("confidence", 0.0)
+                )
+
+                detections.append(
+                    {
+                        "text": text,
+                        "confidence": confidence,
+                    }
+                )
+
+                logger.info(
+                    "OCR detection: request_id={!r} "
+                    "image_index={} text={!r} confidence={:.4f}",
+                    request_id,
+                    image_index,
+                    text,
+                    confidence,
+                )
+
+        request_results = _ocr_pending.setdefault(
+            request_id,
+            {},
+        )
+
+        request_results[image_index] = detections
+
+        received_count = len(request_results)
+
+        if received_count < image_count:
+            logger.info(
+                "OCR request pending: request_id={!r} "
+                "received={}/{}",
+                request_id,
+                received_count,
+                image_count,
+            )
+            return
+
+        logger.info(
+            "OCR request complete: request_id={!r} "
+            "images={}",
+            request_id,
+            sorted(request_results.keys()),
+        )
+
+        for index in sorted(request_results):
+            logger.info(
+                "OCR grouped result: request_id={!r} "
+                "image_index={} detections={}",
+                request_id,
+                index,
+                request_results[index],
+            )
+
+        del _ocr_pending[request_id]
+
+    except Exception:
+        logger.exception(
+            "Failed to process OCR image: participant={!r}",
+            msg.participant_id,
+        )
 
 def _vlm_warmup_jpeg() -> bytes:
     buffer = io.BytesIO()
@@ -126,6 +278,9 @@ async def run_app(
     tts = make_tts(models, "tts")
 
     transport = HubVoiceTransport()
+    
+    transport.endpoint.on_data(_on_ocr_image)
+    
     voice = VoiceAgent(
         query_topic=USER_QUERY_TOPIC,
         stt=stt,

@@ -15,6 +15,7 @@ The client never publishes media — it is subscribe-only.
 """
 from __future__ import annotations
 
+import msgpack
 import asyncio
 import time
 from collections import deque
@@ -32,12 +33,17 @@ from device_io_hub.ipc import (
     ReturnAudioFlush,
 )
 
+from ._byte_stream import ByteStreamReadLimits, read_byte_stream
 from ._token import make_client_token
 from .config import (
     _DEFAULT_RETURN_AUDIO_MAX_BUFFER_S,
     LiveKitConnectorConfig,
     _validate_return_audio_max_buffer_s,
 )
+
+
+_OCR_IMAGE_TOPIC = "medical.ocr.image"
+_OCR_IMAGE_MAX_BYTES = 10 * 1024 * 1024
 
 
 def _now_us() -> int:
@@ -242,6 +248,10 @@ class RoomClient:
         self._return_audio: dict[
             str, tuple[rtc.AudioSource, rtc.LocalTrackPublication, _ReturnAudioPipe]
         ] = {}
+        self._room.register_byte_stream_handler(
+            _OCR_IMAGE_TOPIC,
+            self._on_ocr_image_stream,
+        )
 
         # ── room event handlers ───────────────────────────────────────────────
 
@@ -283,6 +293,88 @@ class RoomClient:
                     )
                 )
             )
+
+    def _on_ocr_image_stream(
+        self,
+        reader: rtc.ByteStreamReader,
+        participant_identity: str,
+    ) -> None:
+        self._spawn(
+            self._handle_ocr_image_stream(
+                reader,
+                participant_identity,
+            )
+        )
+
+    async def _handle_ocr_image_stream(
+        self,
+        reader: rtc.ByteStreamReader,
+        participant_identity: str,
+    ) -> None:
+        try:
+            info = reader.info
+            attributes = info.attributes or {}
+
+            image_bytes = await read_byte_stream(
+                reader,
+                ByteStreamReadLimits(
+                    max_bytes=_OCR_IMAGE_MAX_BYTES,
+                    idle_timeout_s=5.0,
+                    total_timeout_s=15.0,
+                    require_declared_size=True,
+                ),
+            )
+
+            request_id = attributes.get("request_id", "")
+            image_index = int(attributes.get("image_index", "0"))
+            image_count = int(attributes.get("image_count", "2"))
+
+            payload = msgpack.packb(
+                {
+                    "request_id": request_id,
+                    "image_index": image_index,
+                    "image_count": image_count,
+                    "mime_type": info.mime_type or "image/jpeg",
+                    "name": info.name or "",
+                    "image": image_bytes,
+                },
+                use_bin_type=True,
+            )
+
+            await self._ep.push_data(
+                DataMessage(
+                    participant_id=participant_identity,
+                    topic=_OCR_IMAGE_TOPIC,
+                    pts_us=_now_us(),
+                    data=payload,
+                )
+            )
+
+            logger.info(
+                "OCR image forwarded: participant={!r} "
+                "request_id={!r} image_index={}/{} "
+                "mime_type={!r} size={} bytes",
+                participant_identity,
+                request_id,
+                image_index,
+                image_count,
+                info.mime_type or "image/jpeg",
+                len(image_bytes),
+            )
+
+        except (TypeError, ValueError) as exc:
+            logger.warning(
+                "Invalid OCR image metadata from participant={!r}: {}",
+                participant_identity,
+                exc,
+            )
+
+        except Exception:
+            logger.exception(
+                "Failed to receive OCR image from participant={!r}",
+                participant_identity,
+            )
+
 
     # ── lifecycle ─────────────────────────────────────────────────────────────
 
