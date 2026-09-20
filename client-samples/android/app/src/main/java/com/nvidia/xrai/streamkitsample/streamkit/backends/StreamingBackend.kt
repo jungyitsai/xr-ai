@@ -128,5 +128,38 @@ interface StreamingBackend {
      *                 `false` for low-latency best-effort delivery.
      * @throws [com.nvidia.xrai.streamkitsample.streamkit.StreamError.NotConnected]
      */
+    // ── Data channel ──────────────────────────────────────────────────────────
+    /**
+     * Sends binary data to remote participants via the transport's data channel.
+     *
+     * Keep individual messages under 15 KB (LiveKit's WebRTC data-channel MTU).
+     *
+     * @param data    Payload bytes.
+     * @param reliable `true` for ordered, guaranteed delivery (default).
+     *                 `false` for low-latency best-effort delivery.
+     * @throws [com.nvidia.xrai.streamkitsample.streamkit.StreamError.NotConnected]
+     */
     suspend fun send(data: ByteArray, reliable: Boolean = true)
+
+    // ── Byte stream ───────────────────────────────────────────────────────────
+    /**
+     * Sends a binary byte stream to remote participants.
+     *
+     * Intended for payloads larger than ordinary data-channel messages,
+     * such as JPEG images.
+     *
+     * @param data Payload bytes.
+     * @param topic Application-defined stream topic.
+     * @param attributes Metadata attached to the stream.
+     * @param mimeType MIME type of the payload.
+     * @param name Logical file name.
+     * @return LiveKit stream id.
+     */
+    suspend fun sendByteStream(
+        data: ByteArray,
+        topic: String,
+        attributes: Map<String, String> = emptyMap(),
+        mimeType: String,
+        name: String,
+    ): String
 }

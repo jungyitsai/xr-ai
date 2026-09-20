@@ -198,6 +198,22 @@ class StreamSession(private val backend: StreamingBackend) {
         backend.send(data, reliable)
     }
 
+    suspend fun sendByteStream(
+        data: ByteArray,
+        topic: String,
+        attributes: Map<String, String> = emptyMap(),
+        mimeType: String,
+        name: String,
+    ): String {
+        return backend.sendByteStream(
+            data = data,
+            topic = topic,
+            attributes = attributes,
+            mimeType = mimeType,
+            name = name,
+        )
+    }
+
     // ── Private ────────────────────────────────────────────────────────────────
 
     private fun wireCallbacks() {

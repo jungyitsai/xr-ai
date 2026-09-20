@@ -37,6 +37,8 @@ const val VIRTUAL_CAMERA_ID = "__virtual_camera__"
 /** Synthetic-camera frame interval (~30 fps). */
 private const val VIRTUAL_CAMERA_FRAME_MS = 33L
 
+private const val OCR_IMAGE_TOPIC = "medical.ocr.image"
+
 /** A message received from the agent or other remote participants. */
 data class ReceivedMessage(
     val id: String = UUID.randomUUID().toString(),
@@ -57,12 +59,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // ── Connection settings ────────────────────────────────────────────────────
 
-    var host by mutableStateOf("192.168.1.100")
+    var host by mutableStateOf("localhost")
     var port by mutableStateOf("8080")
     /** Pre-signed JWT token (alternative to tokenServerURL). */
     var tokenInput by mutableStateOf("")
     /** Token server URL. Defaults to https://<host>:<port>/token when blank. */
-    var tokenServerURL by mutableStateOf("")
+    var tokenServerURL by mutableStateOf("https://localhost:8080/token")
     var identity by mutableStateOf("android-client")
 
     // ── Camera settings ────────────────────────────────────────────────────────
@@ -375,6 +377,61 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 session?.send(text.toByteArray(Charsets.UTF_8))
             } catch (e: Exception) {
                 lastError = e.message
+            }
+        }
+    }
+
+    fun sendOcrImages(
+        image1: ByteArray,
+        image2: ByteArray,
+        mimeType1: String,
+        mimeType2: String,
+    ) {
+        if (connectionState != ConnectionState.CONNECTED) {
+            lastError = "Connect before sending OCR images."
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                val activeSession = session
+                    ?: throw IllegalStateException("Session is not available.")
+
+                val requestId = "check-${UUID.randomUUID()}"
+
+                activeSession.sendByteStream(
+                    data = image1,
+                    topic = OCR_IMAGE_TOPIC,
+                    attributes = mapOf(
+                        "request_id" to requestId,
+                        "image_index" to "1",
+                        "image_count" to "2",
+                    ),
+                    mimeType = mimeType1,
+                    name = "${requestId}_1",
+                )
+
+                activeSession.sendByteStream(
+                    data = image2,
+                    topic = OCR_IMAGE_TOPIC,
+                    attributes = mapOf(
+                        "request_id" to requestId,
+                        "image_index" to "2",
+                        "image_count" to "2",
+                    ),
+                    mimeType = mimeType2,
+                    name = "${requestId}_2",
+                )
+
+                receivedMessages.add(
+                    0,
+                    ReceivedMessage(
+                        text = "[OCR] sent 2 images request_id=$requestId"
+                    ),
+                )
+
+            } catch (e: Exception) {
+                lastError = e.message ?: "Failed to send OCR images."
             }
         }
     }

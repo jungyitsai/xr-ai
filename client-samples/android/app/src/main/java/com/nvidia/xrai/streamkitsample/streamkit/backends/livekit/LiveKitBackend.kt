@@ -315,6 +315,32 @@ internal class LiveKitBackend(
         )
     }
 
+    override suspend fun sendByteStream(
+        data: ByteArray,
+        topic: String,
+        attributes: Map<String, String>,
+        mimeType: String,
+        name: String,
+    ): String {
+        if (!isConnected) throw StreamError.NotConnected
+
+        val destinationIdentities = config.hubIdentity
+            ?.let { listOf(Participant.Identity(it)) }
+            ?: emptyList()
+
+        return byteStreamWriter.sendBytes(
+            data,
+            ByteStreamWireOptions(
+                topic = topic,
+                attributes = attributes,
+                destinationIdentities = destinationIdentities,
+                mimeType = mimeType,
+                name = name,
+                totalSize = data.size.toLong(),
+            ),
+        )
+    }
+
     // ── Event dispatcher ───────────────────────────────────────────────────────
 
     private fun handleEvent(eventRoom: Room, event: RoomEvent) {

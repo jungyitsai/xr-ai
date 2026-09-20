@@ -90,6 +90,7 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 
+
 // ── Color tokens (match web client's CSS variables) ───────────────────────────
 
 private val ColorGreen    = Color(0xFF34C759)
@@ -800,8 +801,144 @@ private fun DataChannelSection(vm: AppViewModel) {
     val isConnected = vm.connectionState == ConnectionState.CONNECTED
     var messageText by remember { mutableStateOf("") }
 
-    SectionCard(title = "Data Channel") {
-        // Custom message input + send button
+    val context = LocalContext.current
+
+    var selectedImage1 by remember { mutableStateOf<ByteArray?>(null) }
+    var selectedImage2 by remember { mutableStateOf<ByteArray?>(null) }
+
+    var selectedMimeType1 by remember { mutableStateOf("image/jpeg") }
+    var selectedMimeType2 by remember { mutableStateOf("image/jpeg") }
+
+    var selectedImageCount by remember { mutableStateOf(0) }
+
+    val imagePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris ->
+        if (uris.size != 2) {
+            selectedImage1 = null
+            selectedImage2 = null
+            selectedImageCount = 0
+            return@rememberLauncherForActivityResult
+        }
+
+        try {
+            val resolver = context.contentResolver
+
+            val uri1 = uris[0]
+            val uri2 = uris[1]
+
+            selectedImage1 = resolver
+                .openInputStream(uri1)
+                ?.use { it.readBytes() }
+
+            selectedImage2 = resolver
+                .openInputStream(uri2)
+                ?.use { it.readBytes() }
+
+            selectedMimeType1 =
+                resolver.getType(uri1) ?: "image/jpeg"
+
+            selectedMimeType2 =
+                resolver.getType(uri2) ?: "image/jpeg"
+
+            selectedImageCount =
+                if (selectedImage1 != null && selectedImage2 != null) {
+                    2
+                } else {
+                    0
+                }
+
+        } catch (_: Exception) {
+            selectedImage1 = null
+            selectedImage2 = null
+            selectedImageCount = 0
+        }
+    }
+
+    SectionCard(title = "OCR Image Upload") {
+
+        // Step 1：選擇圖片
+        CardRow {
+            Button(
+                onClick = {
+                    imagePicker.launch(arrayOf("image/*"))
+                },
+                enabled = isConnected,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = ColorBlue,
+                ),
+                shape = RoundedCornerShape(8.dp),
+            ) {
+                Text(
+                    if (selectedImageCount == 2) {
+                        "重新選擇圖片"
+                    } else {
+                        "選擇兩張圖片"
+                    }
+                )
+            }
+        }
+
+        // 已選擇狀態
+        CardRow {
+            Text(
+                "Selected images",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+
+            Spacer(Modifier.weight(1f))
+
+            Text(
+                if (selectedImageCount == 2) {
+                    "2 images ready"
+                } else {
+                    "Not selected"
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (selectedImageCount == 2) {
+                    ColorGreen
+                } else {
+                    ColorSecondary
+                },
+            )
+        }
+
+        // Step 2：確認送出
+        CardRow {
+            Button(
+                onClick = {
+                    val image1 = selectedImage1
+                    val image2 = selectedImage2
+
+                    if (image1 != null && image2 != null) {
+                        vm.sendOcrImages(
+                            image1 = image1,
+                            image2 = image2,
+                            mimeType1 = selectedMimeType1,
+                            mimeType2 = selectedMimeType2,
+                        )
+
+                        // 送出後清除目前選擇
+                        selectedImage1 = null
+                        selectedImage2 = null
+                        selectedImageCount = 0
+                    }
+                },
+                enabled =
+                    isConnected &&
+                            selectedImageCount == 2,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = ColorGreen,
+                ),
+                shape = RoundedCornerShape(8.dp),
+            ) {
+                Text("Send 2 OCR Images")
+            }
+        }
+
+        // 原本 Data Channel
         CardRow(showDivider = false) {
             OutlinedTextField(
                 value = messageText,
@@ -823,16 +960,22 @@ private fun DataChannelSection(vm: AppViewModel) {
                 textStyle = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.weight(1f),
             )
+
             Spacer(Modifier.width(8.dp))
+
             Button(
                 onClick = {
                     vm.sendCustom(messageText)
                     messageText = ""
                 },
                 enabled = isConnected && messageText.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = ColorBlue),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = ColorBlue,
+                ),
                 shape = RoundedCornerShape(8.dp),
-            ) { Text("Send") }
+            ) {
+                Text("Send")
+            }
         }
     }
 }
