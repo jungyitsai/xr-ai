@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import io
 import time
+from functools import partial
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -16,7 +17,14 @@ import nemo_relay
 from loguru import logger
 from PIL import Image
 from xr_ai_logging import setup_logging
-from xr_ai_models import VLMService, load_models_config, make_stt, make_tts, make_vlm
+from xr_ai_models import (
+    ChatMessage,
+    load_models_config,
+    make_llm,
+    make_stt,
+    make_tts,
+    make_vlm,
+)
 from xr_ai_runtime import AgentRuntime
 from xr_ai_tools.current_frame import CurrentFrameTool
 from xr_ai_tools.image import ImageRegistry
@@ -29,6 +37,8 @@ from xr_ai_hub import DataMessage
 
 import base64
 import httpx
+
+from .ocr_processor import structure_ocr
 
 _OCR_IMAGE_TOPIC = "medical.ocr.image"
 _OCR_API_URL = "http://127.0.0.1:8102/v1/ocr"
@@ -74,7 +84,11 @@ async def _run_nemotron_ocr(
         response.raise_for_status()
         return response.json()
 
-async def _on_ocr_image(msg: DataMessage) -> None:
+async def _on_ocr_image(
+    msg: DataMessage,
+    *,
+    llm,
+) -> None:
     if msg.topic != _OCR_IMAGE_TOPIC:
         return
 
@@ -170,6 +184,17 @@ async def _on_ocr_image(msg: DataMessage) -> None:
             "images={}",
             request_id,
             sorted(request_results.keys()),
+        )
+        
+        structured_result = await structure_ocr(
+            llm,
+            request_results,
+        )
+
+        logger.info(
+            "OCR structured result: request_id={!r} result={}",
+            request_id,
+            structured_result,
         )
 
         for index in sorted(request_results):
@@ -276,10 +301,16 @@ async def run_app(
     stt = make_stt(models, "stt")
     vlm = make_vlm(models, "vlm")
     tts = make_tts(models, "tts")
+    llm = make_llm(models, "llm")    
 
     transport = HubVoiceTransport()
     
-    transport.endpoint.on_data(_on_ocr_image)
+    transport.endpoint.on_data(
+        partial(
+            _on_ocr_image,
+            llm=llm,
+        )
+    )
     
     voice = VoiceAgent(
         query_topic=USER_QUERY_TOPIC,
