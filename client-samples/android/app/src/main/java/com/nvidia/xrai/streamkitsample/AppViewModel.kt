@@ -254,6 +254,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                             "medicationTimeConfidence=${mergedFields.medicationTimeConfidence}"
                                 )
 
+                                val validation =
+                                    validateMergedOcrFields(mergedFields)
+
+                                Log.i(
+                                    "OCR",
+                                    "Merged OCR validation: " +
+                                            "identityStatus=${validation.identityStatus}, " +
+                                            "identityLowConfidenceFields=${validation.identityLowConfidenceFields}, " +
+                                            "identityMissingFields=${validation.identityMissingFields}, " +
+                                            "medicationStatus=${validation.medicationStatus}, " +
+                                            "medicationLowConfidenceFields=${validation.medicationLowConfidenceFields}, " +
+                                            "medicationMissingFields=${validation.medicationMissingFields}"
+                                )
+
                                 result.images.zip(extractedFields).forEach { (image, fields) ->
                                     Log.i(
                                         "OCR",

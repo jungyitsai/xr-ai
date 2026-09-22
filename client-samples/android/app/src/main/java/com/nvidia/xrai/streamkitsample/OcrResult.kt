@@ -58,6 +58,23 @@ data class MergedOcrFields(
     val medicationTimeConfidence: Double?,
 )
 
+enum class OcrValidationStatus {
+    OK,
+    LOW_CONFIDENCE,
+    MISSING_REQUIRED_FIELD,
+}
+
+data class OcrValidationResult(
+    val identityStatus: OcrValidationStatus,
+    val medicationStatus: OcrValidationStatus,
+
+    val identityLowConfidenceFields: List<String>,
+    val identityMissingFields: List<String>,
+
+    val medicationLowConfidenceFields: List<String>,
+    val medicationMissingFields: List<String>,
+)
+
 private val BED_ID_REGEX =
     Regex("""\d+[A-Z]-\d+""")
 
@@ -381,6 +398,133 @@ fun mergeOcrFields(
 
         medicationTime = medicationTime.first,
         medicationTimeConfidence = medicationTime.second,
+    )
+}
+
+fun validateMergedOcrFields(
+    fields: MergedOcrFields,
+    confidenceThreshold: Double = 0.9,
+): OcrValidationResult {
+
+    val identityLowConfidenceFields =
+        mutableListOf<String>()
+
+    val identityMissingFields =
+        mutableListOf<String>()
+
+    val medicationLowConfidenceFields =
+        mutableListOf<String>()
+
+    val medicationMissingFields =
+        mutableListOf<String>()
+
+    fun checkField(
+        name: String,
+        value: String?,
+        confidence: Double?,
+        lowConfidenceFields: MutableList<String>,
+        missingFields: MutableList<String>,
+    ) {
+        if (value.isNullOrBlank()) {
+            missingFields += name
+        } else if (
+            confidence == null ||
+            confidence < confidenceThreshold
+        ) {
+            lowConfidenceFields += name
+        }
+    }
+
+    // Identity
+    checkField(
+        "bedId",
+        fields.bedId,
+        fields.bedIdConfidence,
+        identityLowConfidenceFields,
+        identityMissingFields,
+    )
+
+    checkField(
+        "patientName",
+        fields.patientName,
+        fields.patientNameConfidence,
+        identityLowConfidenceFields,
+        identityMissingFields,
+    )
+
+    // Medication details
+    if (fields.drugs.isEmpty()) {
+        medicationMissingFields += "drugs"
+    } else if (
+        fields.drugConfidences.isEmpty() ||
+        fields.drugConfidences.any {
+            it < confidenceThreshold
+        }
+    ) {
+        medicationLowConfidenceFields += "drugs"
+    }
+
+    checkField(
+        "dose",
+        fields.dose,
+        fields.doseConfidence,
+        medicationLowConfidenceFields,
+        medicationMissingFields,
+    )
+
+    checkField(
+        "route",
+        fields.route,
+        fields.routeConfidence,
+        medicationLowConfidenceFields,
+        medicationMissingFields,
+    )
+
+    checkField(
+        "medicationTime",
+        fields.medicationTime,
+        fields.medicationTimeConfidence,
+        medicationLowConfidenceFields,
+        medicationMissingFields,
+    )
+
+    val identityStatus = when {
+        identityMissingFields.isNotEmpty() ->
+            OcrValidationStatus.MISSING_REQUIRED_FIELD
+
+        identityLowConfidenceFields.isNotEmpty() ->
+            OcrValidationStatus.LOW_CONFIDENCE
+
+        else ->
+            OcrValidationStatus.OK
+    }
+
+    val medicationStatus = when {
+        medicationMissingFields.isNotEmpty() ->
+            OcrValidationStatus.MISSING_REQUIRED_FIELD
+
+        medicationLowConfidenceFields.isNotEmpty() ->
+            OcrValidationStatus.LOW_CONFIDENCE
+
+        else ->
+            OcrValidationStatus.OK
+    }
+
+    return OcrValidationResult(
+        identityStatus = identityStatus,
+        medicationStatus = medicationStatus,
+
+        identityLowConfidenceFields =
+            identityLowConfidenceFields,
+
+        identityMissingFields =
+            identityMissingFields,
+
+        medicationLowConfidenceFields =
+            medicationLowConfidenceFields,
+
+        medicationMissingFields =
+            medicationMissingFields,
     )
 }
 
