@@ -29,8 +29,12 @@ from xr_ai_hub import DataMessage
 
 import base64
 import httpx
+import json
+import time
+from functools import partial
 
-_OCR_IMAGE_TOPIC = "medical.ocr.image"
+
+_OCR_RESULT_TOPIC = "medical.ocr.result"
 _OCR_API_URL = "http://127.0.0.1:8102/v1/ocr"
 
 _ocr_pending: dict[str, dict[int, list[dict]]] = {}
@@ -74,7 +78,11 @@ async def _run_nemotron_ocr(
         response.raise_for_status()
         return response.json()
 
-async def _on_ocr_image(msg: DataMessage) -> None:
+async def _on_ocr_image(
+    msg: DataMessage,
+    *,
+    transport: HubVoiceTransport,
+) -> None:
     if msg.topic != _OCR_IMAGE_TOPIC:
         return
 
@@ -180,6 +188,42 @@ async def _on_ocr_image(msg: DataMessage) -> None:
                 index,
                 request_results[index],
             )
+        
+        result_payload = {
+            "request_id": request_id,
+            "status": "completed",
+            "images": [
+                {
+                    "image_index": index,
+                    "detections": request_results[index],
+                }
+                for index in sorted(request_results)
+            ],
+        }
+
+        result_bytes = json.dumps(
+            result_payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+
+        await transport.send_return_data(
+            DataMessage(
+                participant_id=msg.participant_id,
+                topic=_OCR_RESULT_TOPIC,
+                pts_us=time.time_ns() // 1_000,
+                data=result_bytes,
+            )
+        )
+
+        logger.info(
+            "OCR result returned: participant={!r} "
+            "request_id={!r} images={} size={} bytes",
+            msg.participant_id,
+            request_id,
+            len(request_results),
+            len(result_bytes),
+        )
 
         del _ocr_pending[request_id]
 
@@ -279,7 +323,12 @@ async def run_app(
 
     transport = HubVoiceTransport()
     
-    transport.endpoint.on_data(_on_ocr_image)
+    transport.endpoint.on_data(
+        partial(
+            _on_ocr_image,
+            transport=transport,
+        )
+    )
     
     voice = VoiceAgent(
         query_topic=USER_QUERY_TOPIC,
