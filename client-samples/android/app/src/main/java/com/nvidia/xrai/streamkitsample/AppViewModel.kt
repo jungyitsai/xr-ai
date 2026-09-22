@@ -26,6 +26,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
+import android.util.Log
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -38,6 +39,8 @@ const val VIRTUAL_CAMERA_ID = "__virtual_camera__"
 private const val VIRTUAL_CAMERA_FRAME_MS = 33L
 
 private const val OCR_IMAGE_TOPIC = "medical.ocr.image"
+
+private const val OCR_RESULT_TOPIC = "medical.ocr.result"
 
 /** A message received from the agent or other remote participants. */
 data class ReceivedMessage(
@@ -134,6 +137,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** Running synthetic-camera frame loop, if the Virtual Camera is active. */
     private var syntheticJob: Job? = null
 
+    var latestOcrResult by mutableStateOf<OcrResult?>(null)
+        private set
+
+    var extractedOcrFields by mutableStateOf<List<ExtractedOcrFields>>(emptyList())
+        private set
+
     // ── Connect / disconnect ──────────────────────────────────────────────────
 
     fun connect() {
@@ -201,6 +210,54 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                 String(data, Charsets.UTF_8)
                             } catch (_: Exception) {
                                 ""
+                            }
+                        }
+                        topic == OCR_RESULT_TOPIC -> {
+                            try {
+                                val body =
+                                    String(data, Charsets.UTF_8)
+
+                                val result =
+                                    parseOcrResult(body)
+
+                                latestOcrResult = result
+
+                                Log.i(
+                                    "OCR",
+                                    "Parsed OCR result: $result"
+                                )
+
+                                val extractedFields =
+                                    result.images.map { image ->
+                                        extractOcrFields(image)
+                                    }
+
+                                extractedOcrFields = extractedFields
+
+                                result.images.zip(extractedFields).forEach { (image, fields) ->
+                                    Log.i(
+                                        "OCR",
+                                        "Extracted OCR fields: " +
+                                                "imageIndex=${image.imageIndex}, " +
+                                                "bedId=${fields.bedId}, " +
+                                                "bedIdConfidence=${fields.bedIdConfidence}, " +
+                                                "birthday=${fields.birthday}, " +
+                                                "birthdayConfidence=${fields.birthdayConfidence}"
+                                    )
+                                }
+
+                                receivedMessages.add(
+                                    0,
+                                    ReceivedMessage(
+                                        text =
+                                            "[OCR RESULT] " +
+                                                    "requestId=${result.requestId}, " +
+                                                    "images=${result.images.size}"
+                                    )
+                                )
+                            } catch (e: Exception) {
+                                lastError =
+                                    "Failed to parse OCR result: ${e.message}"
                             }
                         }
                         topic == "clientControl" -> {
