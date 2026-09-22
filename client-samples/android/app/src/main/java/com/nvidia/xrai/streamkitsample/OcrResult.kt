@@ -38,6 +38,26 @@ data class ExtractedOcrFields(
     val medicationTimeConfidence: Double?,
 )
 
+data class MergedOcrFields(
+    val bedId: String?,
+    val bedIdConfidence: Double?,
+
+    val patientName: String?,
+    val patientNameConfidence: Double?,
+
+    val drugs: List<String>,
+    val drugConfidences: List<Double>,
+
+    val dose: String?,
+    val doseConfidence: Double?,
+
+    val route: String?,
+    val routeConfidence: Double?,
+
+    val medicationTime: String?,
+    val medicationTimeConfidence: Double?,
+)
+
 private val BED_ID_REGEX =
     Regex("""\d+[A-Z]-\d+""")
 
@@ -259,3 +279,144 @@ fun extractOcrFields(
             timeDetection?.confidence,
     )
 }
+
+fun mergeOcrFields(
+    fields: List<ExtractedOcrFields>
+): MergedOcrFields {
+
+    require(fields.isNotEmpty()) {
+        "At least one OCR result is required"
+    }
+
+    if (fields.size == 1) {
+        val field = fields.first()
+
+        return MergedOcrFields(
+            bedId = field.bedId,
+            bedIdConfidence = field.bedIdConfidence,
+
+            patientName = field.patientName,
+            patientNameConfidence = field.patientNameConfidence,
+
+            drugs = field.drugs,
+            drugConfidences = field.drugConfidences,
+
+            dose = field.dose,
+            doseConfidence = field.doseConfidence,
+
+            route = field.route,
+            routeConfidence = field.routeConfidence,
+
+            medicationTime = field.medicationTime,
+            medicationTimeConfidence = field.medicationTimeConfidence,
+        )
+    }
+
+    val first = fields[0]
+    val second = fields[1]
+
+    val bed = chooseHigherConfidence(
+        first.bedId,
+        first.bedIdConfidence,
+        second.bedId,
+        second.bedIdConfidence,
+    )
+
+    val patient = chooseHigherConfidence(
+        first.patientName,
+        first.patientNameConfidence,
+        second.patientName,
+        second.patientNameConfidence,
+    )
+
+    val dose = chooseHigherConfidence(
+        first.dose,
+        first.doseConfidence,
+        second.dose,
+        second.doseConfidence,
+    )
+
+    val route = chooseHigherConfidence(
+        first.route,
+        first.routeConfidence,
+        second.route,
+        second.routeConfidence,
+    )
+
+    val medicationTime = chooseHigherConfidence(
+        first.medicationTime,
+        first.medicationTimeConfidence,
+        second.medicationTime,
+        second.medicationTimeConfidence,
+    )
+
+    val firstDrugScore =
+        averageConfidence(first.drugConfidences)
+
+    val secondDrugScore =
+        averageConfidence(second.drugConfidences)
+
+    val bestDrugFields =
+        if (firstDrugScore >= secondDrugScore) {
+            first
+        } else {
+            second
+        }
+
+    return MergedOcrFields(
+        bedId = bed.first,
+        bedIdConfidence = bed.second,
+
+        patientName = patient.first,
+        patientNameConfidence = patient.second,
+
+        drugs = bestDrugFields.drugs,
+        drugConfidences = bestDrugFields.drugConfidences,
+
+        dose = dose.first,
+        doseConfidence = dose.second,
+
+        route = route.first,
+        routeConfidence = route.second,
+
+        medicationTime = medicationTime.first,
+        medicationTimeConfidence = medicationTime.second,
+    )
+}
+
+private fun chooseHigherConfidence(
+    value1: String?,
+    confidence1: Double?,
+    value2: String?,
+    confidence2: Double?,
+): Pair<String?, Double?> {
+    if (value1 == null && value2 == null) {
+        return null to null
+    }
+
+    if (value1 == null) {
+        return value2 to confidence2
+    }
+
+    if (value2 == null) {
+        return value1 to confidence1
+    }
+
+    val c1 = confidence1 ?: 0.0
+    val c2 = confidence2 ?: 0.0
+
+    return if (c1 >= c2) {
+        value1 to confidence1
+    } else {
+        value2 to confidence2
+    }
+}
+
+private fun averageConfidence(
+    confidences: List<Double>
+): Double =
+    if (confidences.isEmpty()) {
+        0.0
+    } else {
+        confidences.average()
+    }

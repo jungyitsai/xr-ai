@@ -234,6 +234,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
                                 extractedOcrFields = extractedFields
 
+                                val mergedFields =
+                                    mergeOcrFields(extractedFields)
+
+                                Log.i(
+                                    "OCR",
+                                    "Merged OCR fields: " +
+                                            "bedId=${mergedFields.bedId}, " +
+                                            "bedIdConfidence=${mergedFields.bedIdConfidence}, " +
+                                            "patientName=${mergedFields.patientName}, " +
+                                            "patientNameConfidence=${mergedFields.patientNameConfidence}, " +
+                                            "drugs=${mergedFields.drugs}, " +
+                                            "drugConfidences=${mergedFields.drugConfidences}, " +
+                                            "dose=${mergedFields.dose}, " +
+                                            "doseConfidence=${mergedFields.doseConfidence}, " +
+                                            "route=${mergedFields.route}, " +
+                                            "routeConfidence=${mergedFields.routeConfidence}, " +
+                                            "medicationTime=${mergedFields.medicationTime}, " +
+                                            "medicationTimeConfidence=${mergedFields.medicationTimeConfidence}"
+                                )
+
                                 result.images.zip(extractedFields).forEach { (image, fields) ->
                                     Log.i(
                                         "OCR",
