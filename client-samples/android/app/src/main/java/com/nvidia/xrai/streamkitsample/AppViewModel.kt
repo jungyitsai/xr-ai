@@ -241,8 +241,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                                 "imageIndex=${image.imageIndex}, " +
                                                 "bedId=${fields.bedId}, " +
                                                 "bedIdConfidence=${fields.bedIdConfidence}, " +
-                                                "birthday=${fields.birthday}, " +
-                                                "birthdayConfidence=${fields.birthdayConfidence}"
+                                                "patientName=${fields.patientName}, " +
+                                                "patientNameConfidence=${fields.patientNameConfidence}, " +
+                                                "drugs=${fields.drugs}, " +
+                                                "drugConfidences=${fields.drugConfidences}, " +
+                                                "dose=${fields.dose}, " +
+                                                "doseConfidence=${fields.doseConfidence}, " +
+                                                "route=${fields.route}, " +
+                                                "routeConfidence=${fields.routeConfidence}, " +
+                                                "medicationTime=${fields.medicationTime}, " +
+                                                "medicationTimeConfidence=${fields.medicationTimeConfidence}"
                                     )
                                 }
 

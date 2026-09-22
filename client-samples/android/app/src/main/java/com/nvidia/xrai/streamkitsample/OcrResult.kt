@@ -21,15 +21,39 @@ data class OcrResult(
 data class ExtractedOcrFields(
     val bedId: String?,
     val bedIdConfidence: Double?,
-    val birthday: String?,
-    val birthdayConfidence: Double?,
+
+    val patientName: String?,
+    val patientNameConfidence: Double?,
+
+    val drugs: List<String>,
+    val drugConfidences: List<Double>,
+
+    val dose: String?,
+    val doseConfidence: Double?,
+
+    val route: String?,
+    val routeConfidence: Double?,
+
+    val medicationTime: String?,
+    val medicationTimeConfidence: Double?,
 )
 
 private val BED_ID_REGEX =
     Regex("""\d+[A-Z]-\d+""")
 
-private val BIRTHDAY_REGEX =
-    Regex("""生日[：:]\s*(\d{6,8})""")
+//private val BIRTHDAY_REGEX =
+//    Regex("""生日[：:]\s*(\d{6,8})""")
+
+private val MEDICATION_TIME_REGEX =
+    Regex("""\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}""")
+
+private fun OcrDetection.isLabel(label: String): Boolean =
+    text.trim().equals(label, ignoreCase = true)
+
+private fun confidenceOf(
+    detections: List<OcrDetection>
+): Double? =
+    detections.minOfOrNull { it.confidence }
 
 fun parseOcrResult(json: String): OcrResult {
     val root = JSONObject(json)
@@ -79,38 +103,159 @@ fun extractOcrFields(
     image: OcrImageResult
 ): ExtractedOcrFields {
 
-    var bedId: String? = null
-    var bedIdConfidence: Double? = null
+    val detections = image.detections
 
-    var birthday: String? = null
-    var birthdayConfidence: Double? = null
-
-    for (detection in image.detections) {
-        if (bedId == null) {
-            val match =
-                BED_ID_REGEX.find(detection.text)
-
-            if (match != null) {
-                bedId = match.value
-                bedIdConfidence = detection.confidence
-            }
-        }
-
-        if (birthday == null) {
-            val match =
-                BIRTHDAY_REGEX.find(detection.text)
-
-            if (match != null) {
-                birthday = match.groupValues[1]
-                birthdayConfidence = detection.confidence
-            }
-        }
+    // Bed ID
+    val bedDetection = detections.firstOrNull {
+        BED_ID_REGEX.containsMatchIn(it.text)
     }
+
+    val bedId = bedDetection
+        ?.let { BED_ID_REGEX.find(it.text)?.value }
+
+    // Locate field labels
+    val patientIndex =
+        detections.indexOfFirst { it.isLabel("Patient") }
+
+    val drugIndex =
+        detections.indexOfFirst { it.isLabel("Drug") }
+
+    val doseIndex =
+        detections.indexOfFirst { it.isLabel("Dose") }
+
+    val routeIndex =
+        detections.indexOfFirst { it.isLabel("Route") }
+
+    val timeIndex =
+        detections.indexOfFirst { it.isLabel("Time") }
+
+    // Patient
+    val patientDetections =
+        if (
+            patientIndex >= 0 &&
+            drugIndex > patientIndex
+        ) {
+            detections.subList(
+                patientIndex + 1,
+                drugIndex,
+            )
+        } else {
+            emptyList()
+        }
+
+    val patientName =
+        patientDetections
+            .joinToString(" ") {
+                it.text.trim()
+            }
+            .ifBlank { null }
+
+    val patientNameConfidence =
+        confidenceOf(patientDetections)
+
+    // Drug
+    val drugDetections =
+        if (
+            drugIndex >= 0 &&
+            doseIndex > drugIndex
+        ) {
+            detections.subList(
+                drugIndex + 1,
+                doseIndex,
+            )
+        } else {
+            emptyList()
+        }
+
+    // Dose
+    val doseDetections =
+        if (
+            doseIndex >= 0 &&
+            routeIndex > doseIndex
+        ) {
+            detections.subList(
+                doseIndex + 1,
+                routeIndex,
+            )
+        } else {
+            emptyList()
+        }
+
+    // Route
+    val routeDetections =
+        if (
+            routeIndex >= 0 &&
+            timeIndex > routeIndex
+        ) {
+            detections.subList(
+                routeIndex + 1,
+                timeIndex,
+            )
+        } else {
+            emptyList()
+        }
+
+    // Time
+    val timeDetection =
+        if (timeIndex >= 0) {
+            detections
+                .drop(timeIndex + 1)
+                .firstOrNull {
+                    MEDICATION_TIME_REGEX.containsMatchIn(
+                        it.text
+                    )
+                }
+        } else {
+            null
+        }
+
+    val medicationTime =
+        timeDetection?.let {
+            MEDICATION_TIME_REGEX
+                .find(it.text)
+                ?.value
+        }
 
     return ExtractedOcrFields(
         bedId = bedId,
-        bedIdConfidence = bedIdConfidence,
-        birthday = birthday,
-        birthdayConfidence = birthdayConfidence,
+        bedIdConfidence =
+            bedDetection?.confidence,
+
+        patientName =
+            patientName,
+        patientNameConfidence =
+            patientNameConfidence,
+
+        drugs =
+            drugDetections.map {
+                it.text.trim()
+            },
+        drugConfidences =
+            drugDetections.map {
+                it.confidence
+            },
+
+        dose =
+            doseDetections
+                .joinToString(" ") {
+                    it.text.trim()
+                }
+                .ifBlank { null },
+        doseConfidence =
+            confidenceOf(doseDetections),
+
+        route =
+            routeDetections
+                .joinToString(" ") {
+                    it.text.trim()
+                }
+                .ifBlank { null },
+        routeConfidence =
+            confidenceOf(routeDetections),
+
+        medicationTime =
+            medicationTime,
+        medicationTimeConfidence =
+            timeDetection?.confidence,
     )
 }
