@@ -270,9 +270,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                         "OCR",
                                         "Virtual HIS compare: " +
                                                 "status=${hisResult.status}, " +
-                                                "actualBedId=${hisResult.actualBedId}, " +
-                                                "actualPatientName=${hisResult.actualPatientName}, " +
-                                                "expected=${hisResult.expected}"
+                                                "actualBedId=${hisResult.actual?.bedId}, " +
+                                                "actualPatientName=${hisResult.actual?.patientName}, " +
+                                                "expected=${hisResult.expected}, " +
+                                                "mismatchedFields=${hisResult.mismatchedFields}"
                                     )
                                 }
 
