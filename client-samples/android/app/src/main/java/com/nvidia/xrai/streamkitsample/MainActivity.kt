@@ -102,6 +102,20 @@ private val ColorSeparator = Color(0x1F3C3C43)   // 12 % opacity gray
 private val ColorCardBg   = Color(0xFFFFFFFF)
 private val ColorPageBg   = Color(0xFFF2F2F7)
 
+private enum class AppScreen {
+    DEMO,
+    SETTINGS,
+}
+
+private enum class DemoState {
+    INIT,
+    LISTENING,
+    CAPTURING,
+    OCR_PROCESSING,
+    COMPARING,
+    SHOW_RESULT,
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 class MainActivity : ComponentActivity() {
@@ -127,50 +141,352 @@ private fun StreamKitTheme(content: @Composable () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun StreamKitSampleApp(vm: AppViewModel = viewModel()) {
+private fun StreamKitSampleApp(
+    vm: AppViewModel = viewModel()
+) {
+    var currentScreen by remember {
+        mutableStateOf(AppScreen.DEMO)
+    }
+
+    when (currentScreen) {
+        AppScreen.DEMO -> {
+            DemoScreen(
+                vm = vm,
+                onOpenSettings = {
+                    currentScreen = AppScreen.SETTINGS
+                },
+            )
+        }
+
+        AppScreen.SETTINGS -> {
+            SettingsScreen(
+                vm = vm,
+                onBack = {
+                    currentScreen = AppScreen.DEMO
+                },
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SettingsScreen(
+    vm: AppViewModel,
+    onBack: () -> Unit,
+) {
     Scaffold(
         containerColor = ColorPageBg,
         topBar = {
             TopAppBar(
-                title = { Text("NVIDIA XR-AI Sample", style = MaterialTheme.typography.titleLarge) },
+                title = {
+                    Text(
+                        "連線與系統設定",
+                        style = MaterialTheme.typography.titleLarge,
+                    )
+                },
+                navigationIcon = {
+                    TextButton(
+                        onClick = onBack,
+                    ) {
+                        Text("返回")
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = ColorPageBg,
                 ),
             )
         },
     ) { paddingValues ->
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues),
         ) {
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 16.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(24.dp),
+                verticalArrangement =
+                    Arrangement.spacedBy(24.dp),
             ) {
                 Spacer(Modifier.height(4.dp))
-                CameraPreviewCard(vm)
-                AgentSection(vm)
+
                 ConnectionSection(vm)
                 NetworkSection(vm)
                 MediaSection(vm)
                 DataChannelSection(vm)
+
                 if (vm.receivedMessages.isNotEmpty()) {
                     ReceivedSection(vm)
                 }
+
                 Spacer(Modifier.height(24.dp))
             }
 
             ErrorToast(
                 message = vm.lastError,
-                onDismiss = { vm.clearError() },
+                onDismiss = {
+                    vm.clearError()
+                },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 24.dp),
             )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DemoScreen(
+    vm: AppViewModel,
+    onOpenSettings: () -> Unit,
+) {
+    var demoState by remember {
+        mutableStateOf(DemoState.INIT)
+    }
+
+    val nextInstruction = when (demoState) {
+        DemoState.INIT ->
+            "請說：Okay"
+
+        DemoState.LISTENING ->
+            "請說：Okay, start check"
+
+        DemoState.CAPTURING ->
+            "正在接收 J9 拍攝的兩張照片"
+
+        DemoState.OCR_PROCESSING ->
+            "正在辨識藥包內容，請稍候"
+
+        DemoState.COMPARING ->
+            "正在比對 Virtual HIS，請稍候"
+
+        DemoState.SHOW_RESULT ->
+            "請說：Okay, next"
+    }
+
+    fun advanceDemoState() {
+        demoState = when (demoState) {
+            DemoState.INIT ->
+                DemoState.LISTENING
+
+            DemoState.LISTENING ->
+                DemoState.CAPTURING
+
+            DemoState.CAPTURING ->
+                DemoState.OCR_PROCESSING
+
+            DemoState.OCR_PROCESSING ->
+                DemoState.COMPARING
+
+            DemoState.COMPARING ->
+                DemoState.SHOW_RESULT
+
+            DemoState.SHOW_RESULT ->
+                DemoState.INIT
+        }
+    }
+
+    Scaffold(
+        containerColor = ColorPageBg,
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        "AI 用藥辨識",
+                        style = MaterialTheme.typography.titleLarge,
+                    )
+                },
+                actions = {
+                    TextButton(
+                        onClick = onOpenSettings,
+                    ) {
+                        Text("⚙")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = ColorPageBg,
+                ),
+            )
+        },
+    ) { paddingValues ->
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(horizontal = 16.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Spacer(Modifier.height(4.dp))
+
+            SectionCard(
+                title = "目前狀態機"
+            ) {
+                CardRow(
+                    showDivider = false
+                ) {
+                    Column {
+                        Text(
+                            text = demoState.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = ColorBlue,
+                        )
+
+                        Spacer(
+                            Modifier.height(4.dp)
+                        )
+
+                        Text(
+                            text = nextInstruction,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = ColorSecondary,
+                        )
+                    }
+                }
+            }
+
+            SectionCard(
+                title = "語音操作"
+            ) {
+                CardRow {
+                    Text(
+                        "Server",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+
+                    Spacer(Modifier.weight(1f))
+
+                    Text(
+                        text = vm.connectionState.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color =
+                            if (
+                                vm.connectionState ==
+                                ConnectionState.CONNECTED
+                            ) {
+                                ColorGreen
+                            } else {
+                                ColorSecondary
+                            },
+                    )
+                }
+
+                CardRow {
+                    Text(
+                        "Microphone",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+
+                    Spacer(Modifier.weight(1f))
+
+                    Text(
+                        text =
+                            if (vm.isAudioActive) {
+                                "Active"
+                            } else {
+                                "Inactive"
+                            },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color =
+                            if (vm.isAudioActive) {
+                                ColorGreen
+                            } else {
+                                ColorSecondary
+                            },
+                    )
+                }
+
+                CardRow(
+                    showDivider = false
+                ) {
+                    Column {
+                        Text(
+                            "下一步語音指令",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = ColorSecondary,
+                        )
+
+                        Spacer(
+                            Modifier.height(4.dp)
+                        )
+
+                        Text(
+                            text = nextInstruction,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = ColorBlue,
+                        )
+                    }
+                }
+            }
+
+            Button(
+                onClick = {
+                    advanceDemoState()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = ColorOrange,
+                ),
+                shape = RoundedCornerShape(8.dp),
+            ) {
+                Text("測試：模擬語音指令")
+            }
+
+            SectionCard(
+                title = "比對結果"
+            ) {
+                CardRow(
+                    showDivider = false
+                ) {
+                    Text(
+                        text =
+                            if (
+                                demoState ==
+                                DemoState.SHOW_RESULT
+                            ) {
+                                "等待接入 Virtual HIS 比對結果"
+                            } else {
+                                "尚未產生比對結果"
+                            },
+                        color = ColorSecondary,
+                    )
+                }
+            }
+
+            SectionCard(
+                title = "Virtual HIS"
+            ) {
+                CardRow(
+                    showDivider = false
+                ) {
+                    Text(
+                        text = "等待接入 Virtual HIS 資料",
+                        color = ColorSecondary,
+                    )
+                }
+            }
+
+            Button(
+                onClick = {
+                    demoState = DemoState.INIT
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = ColorBlue,
+                ),
+                shape = RoundedCornerShape(8.dp),
+            ) {
+                Text("重置狀態機")
+            }
+
+            Spacer(Modifier.height(24.dp))
         }
     }
 }
