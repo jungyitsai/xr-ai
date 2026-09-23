@@ -110,7 +110,8 @@ private enum class AppScreen {
 private enum class DemoState {
     INIT,
     LISTENING,
-    CAPTURING,
+    WAITING_IMAGES,
+    READY_TO_CHECK,
     OCR_PROCESSING,
     COMPARING,
     SHOW_RESULT,
@@ -250,15 +251,49 @@ private fun DemoScreen(
         mutableStateOf(DemoState.INIT)
     }
 
+    LaunchedEffect(vm.latestHisMatchResult) {
+        if (
+            demoState == DemoState.OCR_PROCESSING &&
+            vm.latestHisMatchResult != null
+        ) {
+            demoState = DemoState.COMPARING
+
+            delay(500)
+
+            demoState = DemoState.SHOW_RESULT
+        }
+    }
+
+    var selectedImage1 by remember {
+        mutableStateOf<ByteArray?>(null)
+    }
+
+    var selectedImage2 by remember {
+        mutableStateOf<ByteArray?>(null)
+    }
+
+    var selectedMimeType1 by remember {
+        mutableStateOf("image/jpeg")
+    }
+
+    var selectedMimeType2 by remember {
+        mutableStateOf("image/jpeg")
+    }
+
+    val context = LocalContext.current
+
     val nextInstruction = when (demoState) {
         DemoState.INIT ->
             "請說：Okay"
 
         DemoState.LISTENING ->
-            "請說：Okay, start check"
+            "等待 J9 傳送兩張藥包照片"
 
-        DemoState.CAPTURING ->
-            "正在接收 J9 拍攝的兩張照片"
+        DemoState.WAITING_IMAGES ->
+            "請載入兩張測試照片，模擬 J9 傳送"
+
+        DemoState.READY_TO_CHECK ->
+            "照片已準備完成，請說：Okay, start check"
 
         DemoState.OCR_PROCESSING ->
             "正在辨識藥包內容，請稍候"
@@ -267,28 +302,91 @@ private fun DemoScreen(
             "正在比對 Virtual HIS，請稍候"
 
         DemoState.SHOW_RESULT ->
-            "請說：Okay, next"
+            "比對完成"
     }
 
-    fun advanceDemoState() {
-        demoState = when (demoState) {
-            DemoState.INIT ->
-                DemoState.LISTENING
 
-            DemoState.LISTENING ->
-                DemoState.CAPTURING
+    val j9ImagePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris ->
 
-            DemoState.CAPTURING ->
-                DemoState.OCR_PROCESSING
+        if (uris.size != 2) {
+            selectedImage1 = null
+            selectedImage2 = null
+            demoState = DemoState.WAITING_IMAGES
+            return@rememberLauncherForActivityResult
+        }
 
-            DemoState.OCR_PROCESSING ->
-                DemoState.COMPARING
+        try {
+            val resolver = context.contentResolver
 
-            DemoState.COMPARING ->
-                DemoState.SHOW_RESULT
+            val uri1 = uris[0]
+            val uri2 = uris[1]
 
-            DemoState.SHOW_RESULT ->
-                DemoState.INIT
+            selectedImage1 =
+                resolver
+                    .openInputStream(uri1)
+                    ?.use { it.readBytes() }
+
+            selectedImage2 =
+                resolver
+                    .openInputStream(uri2)
+                    ?.use { it.readBytes() }
+
+            selectedMimeType1 =
+                resolver.getType(uri1)
+                    ?: "image/jpeg"
+
+            selectedMimeType2 =
+                resolver.getType(uri2)
+                    ?: "image/jpeg"
+
+            if (
+                selectedImage1 != null &&
+                selectedImage2 != null
+            ) {
+                demoState = DemoState.READY_TO_CHECK
+            } else {
+                demoState = DemoState.WAITING_IMAGES
+            }
+
+        } catch (_: Exception) {
+            selectedImage1 = null
+            selectedImage2 = null
+            demoState = DemoState.WAITING_IMAGES
+        }
+    }
+
+    fun simulateVoiceCommand() {
+        when (demoState) {
+            DemoState.INIT -> {
+                demoState = DemoState.LISTENING
+            }
+
+            DemoState.LISTENING -> {
+                demoState = DemoState.WAITING_IMAGES
+            }
+
+            DemoState.READY_TO_CHECK -> {
+                val image1 = selectedImage1
+                val image2 = selectedImage2
+
+                if (
+                    image1 != null &&
+                    image2 != null
+                ) {
+                    vm.sendOcrImages(
+                        image1 = image1,
+                        image2 = image2,
+                        mimeType1 = selectedMimeType1,
+                        mimeType2 = selectedMimeType2,
+                    )
+
+                    demoState = DemoState.OCR_PROCESSING
+                }
+            }
+
+            else -> Unit
         }
     }
 
@@ -428,7 +526,7 @@ private fun DemoScreen(
 
             Button(
                 onClick = {
-                    advanceDemoState()
+                    simulateVoiceCommand()
                 },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
@@ -439,42 +537,137 @@ private fun DemoScreen(
                 Text("測試：模擬語音指令")
             }
 
-            SectionCard(
-                title = "比對結果"
-            ) {
-                CardRow(
-                    showDivider = false
+            if (demoState == DemoState.WAITING_IMAGES) {
+                Button(
+                    onClick = {
+                        j9ImagePicker.launch(
+                            arrayOf("image/*")
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = ColorBlue,
+                    ),
+                    shape = RoundedCornerShape(8.dp),
                 ) {
-                    Text(
-                        text =
-                            if (
-                                demoState ==
-                                DemoState.SHOW_RESULT
-                            ) {
-                                "等待接入 Virtual HIS 比對結果"
-                            } else {
-                                "尚未產生比對結果"
-                            },
-                        color = ColorSecondary,
-                    )
+                    Text("測試：載入兩張 J9 圖片")
                 }
             }
 
             SectionCard(
-                title = "Virtual HIS"
+                title = "比對結果"
             ) {
-                CardRow(
-                    showDivider = false
+                val hisResult = vm.latestHisMatchResult
+
+                if (
+                    demoState != DemoState.SHOW_RESULT ||
+                    hisResult == null
                 ) {
-                    Text(
-                        text = "等待接入 Virtual HIS 資料",
-                        color = ColorSecondary,
+                    CardRow(
+                        showDivider = false
+                    ) {
+                        Text(
+                            text = when (demoState) {
+                                DemoState.OCR_PROCESSING ->
+                                    "正在進行 OCR 辨識"
+
+                                DemoState.COMPARING ->
+                                    "正在比對 Virtual HIS"
+
+                                else ->
+                                    "尚未產生比對結果"
+                            },
+                            color = ColorSecondary,
+                        )
+                    }
+                } else {
+                    CardRow {
+                        Text(
+                            text = "整體結果",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+
+                        Spacer(Modifier.weight(1f))
+
+                        Text(
+                            text = hisResult.status.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = when (hisResult.status) {
+                                HisMatchStatus.MATCH ->
+                                    ColorGreen
+
+                                HisMatchStatus.MISMATCH ->
+                                    ColorRed
+
+                                HisMatchStatus.NOT_FOUND ->
+                                    ColorOrange
+                            },
+                        )
+                    }
+
+                    val fieldLabels = listOf(
+                        "bedId" to "病床號",
+                        "patientName" to "病人姓名",
+                        "drugs" to "藥品名稱",
+                        "dose" to "劑量",
+                        "route" to "給藥途徑",
+                        "medicationTime" to "給藥時間",
                     )
+
+                    fieldLabels.forEachIndexed { index, (field, label) ->
+                        val isMatch =
+                            field in hisResult.matchedFields
+
+                        val isMismatch =
+                            field in hisResult.mismatchedFields
+
+                        CardRow(
+                            showDivider =
+                                index < fieldLabels.lastIndex
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+
+                            Spacer(Modifier.weight(1f))
+
+                            when {
+                                isMatch -> {
+                                    Text(
+                                        text = "MATCH",
+                                        color = ColorGreen,
+                                    )
+                                }
+
+                                isMismatch -> {
+                                    Text(
+                                        text = "MISMATCH",
+                                        color = ColorRed,
+                                    )
+                                }
+
+                                else -> {
+                                    Text(
+                                        text = "—",
+                                        color = ColorSecondary,
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
             Button(
                 onClick = {
+                    selectedImage1 = null
+                    selectedImage2 = null
+                    selectedMimeType1 = "image/jpeg"
+                    selectedMimeType2 = "image/jpeg"
+
+                    vm.clearVerificationResult()
+
                     demoState = DemoState.INIT
                 },
                 modifier = Modifier.fillMaxWidth(),

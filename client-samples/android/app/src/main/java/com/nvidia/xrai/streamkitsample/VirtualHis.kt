@@ -21,13 +21,14 @@ data class HisMatchResult(
     val status: HisMatchStatus,
     val expected: HisPatientRecord?,
     val actual: MergedOcrFields?,
+    val matchedFields: List<String>,
     val mismatchedFields: List<String>,
 )
 
 private val VIRTUAL_HIS = listOf(
     HisPatientRecord(
         bedId = "6A-252",
-        patientName = "Deson000",
+        patientName = "Deson",
         birthday = null,
 
         drugs = listOf(
@@ -56,6 +57,7 @@ fun compareWithVirtualHis(
             status = HisMatchStatus.NOT_FOUND,
             expected = null,
             actual = fields,
+            matchedFields = emptyList(),
             mismatchedFields = emptyList(),
         )
     }
@@ -73,21 +75,70 @@ fun compareWithVirtualHis(
             status = HisMatchStatus.NOT_FOUND,
             expected = null,
             actual = fields,
+            matchedFields = emptyList(),
             mismatchedFields = listOf("bedId"),
         )
     }
 
+    val matchedFields =
+        mutableListOf<String>()
+
     val mismatchedFields =
         mutableListOf<String>()
 
-    if (
-        !expected.patientName.equals(
-            patientName,
-            ignoreCase = true,
-        )
+    fun compareField(
+        name: String,
+        expectedValue: String,
+        actualValue: String?,
     ) {
-        mismatchedFields += "patientName"
+        if (
+            actualValue != null &&
+            expectedValue.trim().equals(
+                actualValue.trim(),
+                ignoreCase = true,
+            )
+        ) {
+            matchedFields += name
+        } else {
+            mismatchedFields += name
+        }
     }
+
+    compareField(
+        name = "bedId",
+        expectedValue = expected.bedId,
+        actualValue = fields.bedId,
+    )
+
+    compareField(
+        name = "patientName",
+        expectedValue = expected.patientName,
+        actualValue = fields.patientName,
+    )
+
+    if (expected.drugs == fields.drugs) {
+        matchedFields += "drugs"
+    } else {
+        mismatchedFields += "drugs"
+    }
+
+    compareField(
+        name = "dose",
+        expectedValue = expected.dose,
+        actualValue = fields.dose,
+    )
+
+    compareField(
+        name = "route",
+        expectedValue = expected.route,
+        actualValue = fields.route,
+    )
+
+    compareField(
+        name = "medicationTime",
+        expectedValue = expected.medicationTime,
+        actualValue = fields.medicationTime,
+    )
 
     return HisMatchResult(
         status =
@@ -98,6 +149,7 @@ fun compareWithVirtualHis(
             },
         expected = expected,
         actual = fields,
+        matchedFields = matchedFields,
         mismatchedFields = mismatchedFields,
     )
 }

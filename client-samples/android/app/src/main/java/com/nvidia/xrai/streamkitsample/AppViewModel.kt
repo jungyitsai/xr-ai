@@ -143,6 +143,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     var extractedOcrFields by mutableStateOf<List<ExtractedOcrFields>>(emptyList())
         private set
 
+    var latestHisMatchResult by mutableStateOf<HisMatchResult?>(null)
+        private set
+
+    var latestMergedOcrFields by mutableStateOf<MergedOcrFields?>(null)
+        private set
+
     // ── Connect / disconnect ──────────────────────────────────────────────────
 
     fun connect() {
@@ -237,6 +243,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                 val mergedFields =
                                     mergeOcrFields(extractedFields)
 
+                                latestMergedOcrFields = mergedFields
+
                                 Log.i(
                                     "OCR",
                                     "Merged OCR fields: " +
@@ -266,13 +274,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                     val hisResult =
                                         compareWithVirtualHis(mergedFields)
 
+                                    latestHisMatchResult = hisResult
+
                                     Log.i(
                                         "OCR",
                                         "Virtual HIS compare: " +
                                                 "status=${hisResult.status}, " +
-                                                "actualBedId=${hisResult.actual?.bedId}, " +
-                                                "actualPatientName=${hisResult.actual?.patientName}, " +
-                                                "expected=${hisResult.expected}, " +
+                                                "matchedFields=${hisResult.matchedFields}, " +
                                                 "mismatchedFields=${hisResult.mismatchedFields}"
                                     )
                                 }
@@ -559,5 +567,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearError() {
         lastError = null
+    }
+
+    fun clearVerificationResult() {
+        latestMergedOcrFields = null
+        latestHisMatchResult = null
     }
 }
