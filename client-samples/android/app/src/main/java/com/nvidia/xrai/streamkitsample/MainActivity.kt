@@ -614,47 +614,55 @@ private fun DemoScreen(
                         "medicationTime" to "給藥時間",
                     )
 
-                    fieldLabels.forEachIndexed { index, (field, label) ->
-                        val isMatch =
-                            field in hisResult.matchedFields
+                    val expected = hisResult.expected
+                    val actual = hisResult.actual
 
-                        val isMismatch =
-                            field in hisResult.mismatchedFields
+                    if (
+                        expected != null &&
+                        actual != null
+                    ) {
+                        ComparisonRow(
+                            label = "病床號",
+                            expected = expected.bedId,
+                            actual = actual.bedId ?: "—",
+                            isMatch = "bedId" in hisResult.matchedFields,
+                        )
 
-                        CardRow(
-                            showDivider =
-                                index < fieldLabels.lastIndex
-                        ) {
-                            Text(
-                                text = label,
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
+                        ComparisonRow(
+                            label = "病人姓名",
+                            expected = expected.patientName,
+                            actual = actual.patientName ?: "—",
+                            isMatch = "patientName" in hisResult.matchedFields,
+                        )
 
-                            Spacer(Modifier.weight(1f))
+                        ComparisonRow(
+                            label = "藥品名稱",
+                            expected = expected.drugs.joinToString(", "),
+                            actual = actual.drugs.joinToString(", "),
+                            isMatch = "drugs" in hisResult.matchedFields,
+                        )
 
-                            when {
-                                isMatch -> {
-                                    Text(
-                                        text = "MATCH",
-                                        color = ColorGreen,
-                                    )
-                                }
+                        ComparisonRow(
+                            label = "劑量",
+                            expected = expected.dose,
+                            actual = actual.dose ?: "—",
+                            isMatch = "dose" in hisResult.matchedFields,
+                        )
 
-                                isMismatch -> {
-                                    Text(
-                                        text = "MISMATCH",
-                                        color = ColorRed,
-                                    )
-                                }
+                        ComparisonRow(
+                            label = "給藥途徑",
+                            expected = expected.route,
+                            actual = actual.route ?: "—",
+                            isMatch = "route" in hisResult.matchedFields,
+                        )
 
-                                else -> {
-                                    Text(
-                                        text = "—",
-                                        color = ColorSecondary,
-                                    )
-                                }
-                            }
-                        }
+                        ComparisonRow(
+                            label = "給藥時間",
+                            expected = expected.medicationTime,
+                            actual = actual.medicationTime ?: "—",
+                            isMatch = "medicationTime" in hisResult.matchedFields,
+                            showDivider = false,
+                        )
                     }
                 }
             }
@@ -795,6 +803,72 @@ private fun CardRow(
             content = content,
         )
         if (showDivider) HorizontalDivider(color = ColorSeparator, thickness = 0.5.dp)
+    }
+}
+
+@Composable
+private fun ComparisonRow(
+    label: String,
+    expected: String,
+    actual: String,
+    isMatch: Boolean,
+    showDivider: Boolean = true,
+) {
+    CardRow(
+        showDivider = showDivider
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+
+                Spacer(Modifier.weight(1f))
+
+                Text(
+                    text =
+                        if (isMatch) {
+                            "MATCH"
+                        } else {
+                            "MISMATCH"
+                        },
+                    color =
+                        if (isMatch) {
+                            ColorGreen
+                        } else {
+                            ColorRed
+                        },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
+            Spacer(Modifier.height(6.dp))
+
+            if (isMatch) {
+                Text(
+                    text = actual,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ColorSecondary,
+                )
+            } else {
+                Text(
+                    text = "HIS：$expected",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ColorSecondary,
+                )
+
+                Text(
+                    text = "OCR：$actual",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
     }
 }
 
