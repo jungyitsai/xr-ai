@@ -244,6 +244,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                             "bedIdConfidence=${mergedFields.bedIdConfidence}, " +
                                             "patientName=${mergedFields.patientName}, " +
                                             "patientNameConfidence=${mergedFields.patientNameConfidence}, " +
+                                            "birthday=${mergedFields.birthday}, " +
+                                            "birthdayConfidence=${mergedFields.birthdayConfidence}, " +
                                             "drugs=${mergedFields.drugs}, " +
                                             "drugConfidences=${mergedFields.drugConfidences}, " +
                                             "dose=${mergedFields.dose}, " +
@@ -256,6 +258,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
                                 val validation =
                                     validateMergedOcrFields(mergedFields)
+
+                                if (
+                                    validation.identityStatus ==
+                                    OcrValidationStatus.OK
+                                ) {
+                                    val hisResult =
+                                        compareWithVirtualHis(mergedFields)
+
+                                    Log.i(
+                                        "OCR",
+                                        "Virtual HIS compare: " +
+                                                "status=${hisResult.status}, " +
+                                                "actualBedId=${hisResult.actualBedId}, " +
+                                                "actualPatientName=${hisResult.actualPatientName}, " +
+                                                "expected=${hisResult.expected}"
+                                    )
+                                }
 
                                 Log.i(
                                     "OCR",

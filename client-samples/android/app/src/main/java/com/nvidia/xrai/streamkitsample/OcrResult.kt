@@ -25,6 +25,9 @@ data class ExtractedOcrFields(
     val patientName: String?,
     val patientNameConfidence: Double?,
 
+    val birthday: String?,
+    val birthdayConfidence: Double?,
+
     val drugs: List<String>,
     val drugConfidences: List<Double>,
 
@@ -44,6 +47,9 @@ data class MergedOcrFields(
 
     val patientName: String?,
     val patientNameConfidence: Double?,
+
+    val birthday: String?,
+    val birthdayConfidence: Double?,
 
     val drugs: List<String>,
     val drugConfidences: List<Double>,
@@ -78,8 +84,8 @@ data class OcrValidationResult(
 private val BED_ID_REGEX =
     Regex("""\d+[A-Z]-\d+""")
 
-//private val BIRTHDAY_REGEX =
-//    Regex("""生日[：:]\s*(\d{6,8})""")
+private val BIRTHDAY_REGEX =
+    Regex("""生日[：:]\s*(\d{6,8})""")
 
 private val MEDICATION_TIME_REGEX =
     Regex("""\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}""")
@@ -149,6 +155,19 @@ fun extractOcrFields(
 
     val bedId = bedDetection
         ?.let { BED_ID_REGEX.find(it.text)?.value }
+
+    val birthdayDetection =
+        detections.firstOrNull {
+            BIRTHDAY_REGEX.containsMatchIn(it.text)
+        }
+
+    val birthday =
+        birthdayDetection?.let {
+            BIRTHDAY_REGEX
+                .find(it.text)
+                ?.groupValues
+                ?.get(1)
+        }
 
     // Locate field labels
     val patientIndex =
@@ -263,6 +282,10 @@ fun extractOcrFields(
         patientNameConfidence =
             patientNameConfidence,
 
+        birthday = birthday,
+        birthdayConfidence =
+            birthdayDetection?.confidence,
+
         drugs =
             drugDetections.map {
                 it.text.trim()
@@ -315,6 +338,9 @@ fun mergeOcrFields(
             patientName = field.patientName,
             patientNameConfidence = field.patientNameConfidence,
 
+            birthday = field.birthday,
+            birthdayConfidence = field.birthdayConfidence,
+
             drugs = field.drugs,
             drugConfidences = field.drugConfidences,
 
@@ -345,6 +371,14 @@ fun mergeOcrFields(
         second.patientName,
         second.patientNameConfidence,
     )
+
+    val birthday =
+        chooseHigherConfidence(
+            first.birthday,
+            first.birthdayConfidence,
+            second.birthday,
+            second.birthdayConfidence,
+        )
 
     val dose = chooseHigherConfidence(
         first.dose,
@@ -386,6 +420,9 @@ fun mergeOcrFields(
 
         patientName = patient.first,
         patientNameConfidence = patient.second,
+
+        birthday = birthday.first,
+        birthdayConfidence = birthday.second,
 
         drugs = bestDrugFields.drugs,
         drugConfidences = bestDrugFields.drugConfidences,
