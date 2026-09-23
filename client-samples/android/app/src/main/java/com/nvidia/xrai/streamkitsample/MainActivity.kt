@@ -219,11 +219,13 @@ private fun SettingsScreen(
                 ConnectionSection(vm)
                 NetworkSection(vm)
                 MediaSection(vm)
-                DataChannelSection(vm)
 
-                if (vm.receivedMessages.isNotEmpty()) {
-                    ReceivedSection(vm)
-                }
+//              Send OCR to Server Test
+//                DataChannelSection(vm)
+//
+//                if (vm.receivedMessages.isNotEmpty()) {
+//                    ReceivedSection(vm)
+//                }
 
                 Spacer(Modifier.height(24.dp))
             }
