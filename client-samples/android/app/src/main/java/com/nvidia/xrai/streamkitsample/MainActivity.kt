@@ -583,29 +583,29 @@ private fun DemoScreen(
                         )
                     }
                 } else {
-                    CardRow {
-                        Text(
-                            text = "整體結果",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-
-                        Spacer(Modifier.weight(1f))
-
-                        Text(
-                            text = hisResult.status.name,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = when (hisResult.status) {
-                                HisMatchStatus.MATCH ->
-                                    ColorGreen
-
-                                HisMatchStatus.MISMATCH ->
-                                    ColorRed
-
-                                HisMatchStatus.NOT_FOUND ->
-                                    ColorOrange
-                            },
-                        )
-                    }
+//                    CardRow {
+//                        Text(
+//                            text = "整體結果",
+//                            style = MaterialTheme.typography.bodyMedium,
+//                        )
+//
+//                        Spacer(Modifier.weight(1f))
+//
+//                        Text(
+//                            text = hisResult.status.name,
+//                            style = MaterialTheme.typography.titleMedium,
+//                            color = when (hisResult.status) {
+//                                HisMatchStatus.MATCH ->
+//                                    ColorGreen
+//
+//                                HisMatchStatus.MISMATCH ->
+//                                    ColorRed
+//
+//                                HisMatchStatus.NOT_FOUND ->
+//                                    ColorOrange
+//                            },
+//                        )
+//                    }
 
                     val fieldLabels = listOf(
                         "bedId" to "病床號",
