@@ -17,11 +17,22 @@ from loguru import logger
 from PIL import Image
 from xr_ai_logging import setup_logging
 from xr_ai_models import VLMService, load_models_config, make_stt, make_tts, make_vlm
-from xr_ai_runtime import AgentRuntime
+from xr_ai_runtime import (
+    Agent,
+    AgentRuntime,
+    RuntimeContext,
+    subscribe,
+)
 from xr_ai_tools.current_frame import CurrentFrameTool
 from xr_ai_tools.image import ImageRegistry
 from xr_ai_tools.vision import StreamingImageQueryTool
-from xr_ai_voice import HubVoiceTransport, VadConfig, VoiceAgent
+from xr_ai_voice import (
+    HubVoiceTransport,
+    VadConfig,
+    VoiceAgent,
+    VOICE_TRANSCRIPT_TOPIC,
+    VoiceTranscript,
+)
 from xr_ai_voicegate import load_voice_gate_config
 
 import msgpack
@@ -35,6 +46,8 @@ from functools import partial
 
 
 _OCR_RESULT_TOPIC = "medical.ocr.result"
+_ASR_RESULT_TOPIC = "asrResult"
+
 _OCR_API_URL = "http://127.0.0.1:8102/v1/ocr"
 
 _ocr_pending: dict[str, dict[int, list[dict]]] = {}
@@ -374,6 +387,11 @@ async def run_app(
     )
     runtime.register("voice", voice)
 
+    runtime.register(
+        "asr-result-forwarder",
+        AsrResultForwarder(transport),
+    )
+
     logger.info("Relay events → {}", log_file.parent / "relay-events.jsonl")
     logger.info("simple-vlm-example starting")
     async with _relay_event_log(log_file):
@@ -383,3 +401,58 @@ async def run_app(
             finally:
                 await simple_vlm.stop()
     logger.info("simple-vlm-example stopped")
+
+
+class AsrResultForwarder(Agent):
+    """Forward final ASR transcripts back to the originating participant."""
+
+    def __init__(self, transport: HubVoiceTransport) -> None:
+        super().__init__()
+        self._transport = transport
+
+    @subscribe(VOICE_TRANSCRIPT_TOPIC)
+    async def on_transcript(
+        self,
+        transcript: VoiceTranscript,
+        ctx: RuntimeContext,
+    ) -> None:
+        participant_id = ctx.metadata.participant_id
+
+        if participant_id is None:
+            logger.warning(
+                "ASR transcript missing participant_id: text={!r}",
+                transcript.text,
+            )
+            return
+
+        await _return_asr_result(
+            transport=self._transport,
+            participant_id=participant_id,
+            transcript=transcript,
+        )
+
+
+async def _return_asr_result(
+    transport: HubVoiceTransport,
+    participant_id: str,
+    transcript: VoiceTranscript,
+) -> None:
+    text = transcript.text.strip()
+
+    if not text:
+        return
+
+    await transport.send_return_data(
+        DataMessage(
+            participant_id=participant_id,
+            topic=_ASR_RESULT_TOPIC,
+            pts_us=time.time_ns() // 1_000,
+            data=text.encode("utf-8"),
+        )
+    )
+
+    logger.info(
+        "ASR result returned: participant={!r} text={!r}",
+        participant_id,
+        text,
+    )
