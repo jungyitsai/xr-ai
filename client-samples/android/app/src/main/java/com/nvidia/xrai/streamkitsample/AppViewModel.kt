@@ -42,6 +42,8 @@ private const val OCR_IMAGE_TOPIC = "medical.ocr.image"
 
 private const val OCR_RESULT_TOPIC = "medical.ocr.result"
 
+private const val ASR_RESULT_TOPIC = "asrResult"
+
 /** A message received from the agent or other remote participants. */
 data class ReceivedMessage(
     val id: String = UUID.randomUUID().toString(),
@@ -149,6 +151,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     var latestMergedOcrFields by mutableStateOf<MergedOcrFields?>(null)
         private set
 
+    var latestAsrResult by mutableStateOf<String?>(null)
+        private set
+
     // ── Connect / disconnect ──────────────────────────────────────────────────
 
     fun connect() {
@@ -218,6 +223,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                 ""
                             }
                         }
+
+                        topic == ASR_RESULT_TOPIC -> {
+                            try {
+                                val body =
+                                    String(data, Charsets.UTF_8)
+
+                                latestAsrResult = body
+
+                                Log.i(
+                                    "ASR",
+                                    "Received ASR result: $body"
+                                )
+                            } catch (e: Exception) {
+                                lastError =
+                                    "Failed to parse ASR result: ${e.message}"
+                            }
+                        }
+
                         topic == OCR_RESULT_TOPIC -> {
                             try {
                                 val body =
@@ -572,5 +595,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun clearVerificationResult() {
         latestMergedOcrFields = null
         latestHisMatchResult = null
+    }
+
+    fun updateAsrResult(text: String) {
+        latestAsrResult = text
     }
 }

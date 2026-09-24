@@ -669,6 +669,22 @@ private fun DemoScreen(
                 }
             }
 
+            LaunchedEffect(Unit) {
+                vm.updateAsrResult("Okay, medication")
+            }
+
+            SectionCard(
+                title = "ASR Result"
+            ) {
+                val asrResult = vm.latestAsrResult
+
+                if (asrResult.isNullOrBlank()) {
+                    Text("尚未收到 ASR 結果")
+                } else {
+                    Text(asrResult)
+                }
+            }
+
             Button(
                 onClick = {
                     selectedImage1 = null
